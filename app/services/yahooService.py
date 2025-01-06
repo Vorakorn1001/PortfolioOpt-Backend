@@ -1,8 +1,8 @@
 import sys
 import os
-from schemas.stockData import homePageStockData
-from schemas.stockHistoryPrice import stockHistoryPrice
-from models.database import db
+from app.schemas.stockData import homePageStockData
+from app.schemas.stockHistoryPrice import stockHistoryPrice
+from app.models.database import db
 from datetime import datetime
 from typing import Dict, List
 import asyncio
@@ -89,32 +89,30 @@ class yahooService:
     def convertToStockData(self, stockData: Dict, stockHistoryPrice: pd.DataFrame) -> Dict:
         numberOfDaysInYear = 252
 
-        def calculateReturn(stockHistoryPrice: pd.DataFrame, days: int) -> float:
+        def calculateAnnualizedReturn(stockHistoryPrice: pd.DataFrame, days: int) -> float:
             if len(stockHistoryPrice) >= days:
-                start_price = stockHistoryPrice.iloc[-days]["close"]
-                end_price = stockHistoryPrice.iloc[-1]["close"]
-                return (end_price - start_price) / start_price
+                recent_prices = stockHistoryPrice.iloc[-days:]
+                daily_returns = recent_prices["close"].pct_change(fill_method=None).dropna()  # Compute daily returns
+                average_daily_return = daily_returns.mean()  # Mean of daily returns
+                annualized_return = average_daily_return * numberOfDaysInYear  # Annualize
+                return annualized_return
             return None
 
-        def calculateYtdReturn(stockHistoryPrice: pd.DataFrame) -> float:
+        def calculateYtdAnnualizedReturn(stockHistoryPrice: pd.DataFrame) -> float:
             current_year = datetime.now().year
             start_of_year = datetime(current_year, 1, 1)
             ytd_prices = stockHistoryPrice[stockHistoryPrice.index >= start_of_year]
             if len(ytd_prices) >= 2:
-                start_price = ytd_prices.iloc[0]["close"]
-                end_price = ytd_prices.iloc[-1]["close"]
-                return (end_price - start_price) / start_price
+                daily_returns = ytd_prices["close"].pct_change(fill_method=None).dropna()  # Compute daily returns
+                average_daily_return = daily_returns.mean()  # Mean of daily returns
+                ytd_annualized_return = average_daily_return * numberOfDaysInYear  # Annualize
+                return ytd_annualized_return
             return None
 
-        annual5YrsReturn = calculateReturn(stockHistoryPrice, numberOfDaysInYear * 5)
-        annual3YrsReturn = calculateReturn(stockHistoryPrice, numberOfDaysInYear * 3)
-        annual1YrReturn = calculateReturn(stockHistoryPrice, numberOfDaysInYear)
-        ytdReturn = calculateYtdReturn(stockHistoryPrice)
-
-        if annual5YrsReturn:
-            annual5YrsReturn /= 5
-        if annual3YrsReturn:
-            annual3YrsReturn /= 3
+        annual5YrsReturn = calculateAnnualizedReturn(stockHistoryPrice, numberOfDaysInYear * 5)
+        annual3YrsReturn = calculateAnnualizedReturn(stockHistoryPrice, numberOfDaysInYear * 3)
+        annual1YrReturn = calculateAnnualizedReturn(stockHistoryPrice, numberOfDaysInYear)
+        ytdReturn = calculateYtdAnnualizedReturn(stockHistoryPrice)
 
         return {
             "symbol": stockData["Symbol"],
@@ -127,6 +125,7 @@ class yahooService:
             "sector": stockData["Sector"],
             "industry": stockData["Industry"],
             "marketCap": stockData["Market Cap"],
+            "dataCollectedDays": len(stockHistoryPrice),
         }
 
     def convertToStockHistory(self, data: Dict) -> Dict:

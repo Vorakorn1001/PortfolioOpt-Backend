@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import stock, users, items
+from app.routes import stock, users, items, portfolio
 from app.models.database import db
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,6 +23,7 @@ app.add_middleware(
 app.include_router(users.router, prefix="/users")
 app.include_router(items.router, prefix="/items")
 app.include_router(stock.router, prefix="/stock")
+app.include_router(portfolio.router, prefix="/portfolio")
 
 @app.get("/")
 def read_root():

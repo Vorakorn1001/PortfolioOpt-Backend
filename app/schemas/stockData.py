@@ -11,6 +11,7 @@ class homePageStockData(BaseModel):
     sector: str
     industry: str
     marketCap: float
+    dataCollectedDays: int
 
 class portfolioStockData(homePageStockData):
     impliedEqReturn: float

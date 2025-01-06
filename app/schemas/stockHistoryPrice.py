@@ -3,7 +3,7 @@ from datetime import datetime
 
 class stockHistoryPrice(BaseModel):
     date: datetime
-    ticker: str
+    symbol: str
     open: float
     high: float
     low: float
