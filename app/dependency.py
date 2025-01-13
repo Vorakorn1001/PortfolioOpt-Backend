@@ -1,12 +1,12 @@
-from app.services.yahooService import yahooService
-from app.services.portfolioService import portfolioService
-from app.services.optimizeService import optimizeService
+from app.services.YahooService import YahooService
+from app.services.PortfolioService import PortfolioService
+from app.services.OptimizeService import OptimizeService
 
-def getYahooService() -> yahooService:
-    return yahooService()
+def getYahooService() -> YahooService:
+    return YahooService()
 
-def getPortfolioService() -> portfolioService:
-    return portfolioService()
+def getPortfolioService() -> PortfolioService:
+    return PortfolioService()
 
-def getOptimizeService() -> optimizeService:
-    return optimizeService()
+def getOptimizeService() -> OptimizeService:
+    return OptimizeService()

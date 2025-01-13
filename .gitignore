@@ -6,5 +6,9 @@ database
 __pycache__
 
 *.ipynb
+*.log
 test.py
 app/services/logs/errorTickers.txt
+
+service-account.json
+

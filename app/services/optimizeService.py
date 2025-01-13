@@ -1,67 +1,73 @@
 from scipy.optimize import minimize
-from app.services.portfolioService import portfolioService
+from app.services.PortfolioService import PortfolioService
+from pypfopt import EfficientFrontier
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import List
 
-class optimizeService:
+class OptimizeService:
     def __init__(self):
-        self.portfolioService: portfolioService = portfolioService()
+        self.portfolioService = PortfolioService()
 
-    def optimizeFixedReturn(self, target_return, mean_returns, cov_matrix) -> List[float]:
-        if isinstance(mean_returns, dict):
-            mean_returns = list(mean_returns.values())
+    def optimizeFixedReturn(self, target_return: float, mean_returns: List[float], cov_matrix: np.ndarray) -> List[float]:
+        
+        # Initialize the Efficient Frontier object
+        ef = EfficientFrontier(mean_returns, cov_matrix, solver="OSQP")
 
-        num_assets = len(mean_returns)
-        args = (cov_matrix,)
+        # Optimize for minimum variance at the given target return
+        ef.efficient_return(target_return)
 
-        constraints = (
-            {'type': 'eq', 'fun': lambda weights: self.portfolioService.getPortfolioReturn(weights, mean_returns) - target_return},
-            {'type': 'eq', 'fun': lambda weights: np.sum(weights) - 1}
-        )
+        # Retrieve the optimized weights
+        optimal_weights = ef.clean_weights()
 
-        bounds = tuple((0, 1) for _ in range(num_assets))
-        initial_weights = num_assets * [1. / num_assets,]
+        return list(optimal_weights.values())
+        
+        # mean_returns = np.array(mean_returns)
+        # cov_matrix_inv = np.linalg.inv(cov_matrix)
+        # ones = np.ones(len(mean_returns))
 
-        result = minimize(self.portfolioService.getPortfolioVariance, initial_weights, args=args, method='SLSQP', bounds=bounds, constraints=constraints)
-        return result.x
+        # # Calculate weights
+        # A = ones @ cov_matrix_inv @ mean_returns
+        # B = mean_returns @ cov_matrix_inv @ mean_returns
+        # C = ones @ cov_matrix_inv @ ones
+
+        # lambda1 = (target_return * C - A) / (B * C - A ** 2)
+        # lambda2 = (B - target_return * A) / (B * C - A ** 2)
+
+        # weights = lambda1 * (cov_matrix_inv @ mean_returns) + lambda2 * (cov_matrix_inv @ ones)
+        # return weights.tolist()
+
+    def optimizeFixedRisk(self, target_volatility: float, mean_returns: List[float], cov_matrix: np.ndarray) -> List[float]:
+        print(target_volatility)
+        ef = EfficientFrontier(mean_returns, cov_matrix)
+        ef.efficient_risk(target_volatility)
+        optimal_weights = ef.clean_weights()
+        return list(optimal_weights.values())
     
-    def optimizeFixedVariance(self, target_variance, mean_returns, cov_matrix) -> List[float]:
-        if isinstance(mean_returns, dict):
-            mean_returns = list(mean_returns.values())
-        num_assets = len(mean_returns)
-        args = (mean_returns,)
+    def optimizeRangeRisk(self, min_volatility, max_volatility, step, mean_returns, cov_matrix, riskFreeRate):   
+        results = []
+        ef = EfficientFrontier(mean_returns, cov_matrix)
+        
+        target_volatility = min_volatility
+        while (target_volatility <= max_volatility):
+            ef.efficient_risk(target_volatility)
+            optimal_weights = ef.clean_weights()
+            optimal_weights = list(optimal_weights.values())
+            
+            results.append({
+                "weight": optimal_weights,
+                "return": self.portfolioService.getPortfolioReturn(optimal_weights, mean_returns),
+                "volatility": self.portfolioService.getPortfolioStdDev(optimal_weights, cov_matrix),
+                "sharpeRatio": self.portfolioService.getPortfolioSharpeRatio(optimal_weights, mean_returns, cov_matrix, riskFreeRate)
+            })
+            target_volatility += step
+        
+        return results
 
-        def objective(weights, mean_returns):
-            return -self.portfolioService.getPortfolioReturn(weights, mean_returns)
-
-        constraints = (
-            {'type': 'eq', 'fun': lambda weights: self.portfolioService.getPortfolioVariance(weights, cov_matrix) - target_variance},
-            {'type': 'eq', 'fun': lambda weights: np.sum(weights) - 1}
-        )
-
-        bounds = tuple((0, 1) for _ in range(num_assets))
-        initial_weights = num_assets * [1. / num_assets,]
-
-        result = minimize(objective, initial_weights, args=args, method='SLSQP', bounds=bounds, constraints=constraints)
-        return result.x
-
-    def optimizeSharpeRatio(self, mean_returns, cov_matrix, risk_free_rate):
-        if isinstance(mean_returns, dict):
-            mean_returns = list(mean_returns.values())
-        num_assets = len(mean_returns)
-        args = (mean_returns, cov_matrix, risk_free_rate)
-
-        def objective(weights, mean_returns, cov_matrix, risk_free_rate):
-            return -self.portfolioService.getPortfolioSharpeRatio(weights, mean_returns, cov_matrix, risk_free_rate)
-
-        constraints = (
-            {'type': 'eq', 'fun': lambda weights: np.sum(weights) - 1},
-        )
-
-        bounds = tuple((0, 1) for _ in range(num_assets))
-        initial_weights = num_assets * [1. / num_assets,]
-
-        result = minimize(objective, initial_weights, args=args, method='SLSQP', bounds=bounds, constraints=constraints)
-        return result.x
-    
+    def optimizeSharpeRatio(self, mean_returns: List[float], cov_matrix: np.ndarray, risk_free_rate: float) -> List[float]:
+        mean_returns = np.array(mean_returns)
+        cov_matrix_inv = np.linalg.inv(cov_matrix)
+        ones = np.ones(len(mean_returns))
+        excess_returns = mean_returns - risk_free_rate
+        weights = cov_matrix_inv @ excess_returns / (ones @ cov_matrix_inv @ excess_returns)
+        return weights.tolist()

@@ -27,7 +27,13 @@ def processResponse(item):
 @router.get("/{length}")
 def get_stock(length: int, size: int = 20):
     collection = db["stockData"]
-    top_stocks = collection.find().sort("marketCap", -1).limit(size + length).to_list()[-size:]
+    skip = length
+    top_stocks = (
+        collection.find()
+        .sort("marketCap", -1)
+        .skip(skip)
+        .limit(size)
+    )
     top_stocks_list = [processResponse(item) for item in top_stocks]
     return top_stocks_list
 

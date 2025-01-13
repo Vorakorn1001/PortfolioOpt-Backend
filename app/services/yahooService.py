@@ -18,9 +18,8 @@ load_dotenv()
 project_root = os.path.abspath(os.path.join(os.getcwd(), '../'))
 sys.path.append(project_root)
 
-class yahooService:
+class YahooService:
     def __init__(self, max_workers: int = 5):
-        self.errorTickers = []
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         
     def readNasdaq(self):
@@ -98,21 +97,19 @@ class yahooService:
                 return annualized_return
             return None
 
-        def calculateYtdAnnualizedReturn(stockHistoryPrice: pd.DataFrame) -> float:
+        def calculateYtdReturn(stockHistoryPrice: pd.DataFrame) -> float:
             current_year = datetime.now().year
             start_of_year = datetime(current_year, 1, 1)
             ytd_prices = stockHistoryPrice[stockHistoryPrice.index >= start_of_year]
             if len(ytd_prices) >= 2:
-                daily_returns = ytd_prices["close"].pct_change(fill_method=None).dropna()  # Compute daily returns
-                average_daily_return = daily_returns.mean()  # Mean of daily returns
-                ytd_annualized_return = average_daily_return * numberOfDaysInYear  # Annualize
-                return ytd_annualized_return
+                ytd_return = (ytd_prices.iloc[-1]["close"] - ytd_prices.iloc[0]["close"]) / ytd_prices.iloc[0]["close"]
+                return ytd_return
             return None
 
         annual5YrsReturn = calculateAnnualizedReturn(stockHistoryPrice, numberOfDaysInYear * 5)
         annual3YrsReturn = calculateAnnualizedReturn(stockHistoryPrice, numberOfDaysInYear * 3)
         annual1YrReturn = calculateAnnualizedReturn(stockHistoryPrice, numberOfDaysInYear)
-        ytdReturn = calculateYtdAnnualizedReturn(stockHistoryPrice)
+        ytdReturn = calculateYtdReturn(stockHistoryPrice)
 
         return {
             "symbol": stockData["Symbol"],
@@ -147,6 +144,28 @@ class yahooService:
             print(f"Error inserting data for {stockData['symbol']}: {e}")
         print(f"Data inserted for {stockData['symbol']}")
         
+    async def getNasdaqIndex(self) -> None:
+        # SPY
+        try:
+            print(f"Fetching data for SPY")
+            loop = asyncio.get_event_loop()
+            # Fetch data in a thread
+            historyPrice = await loop.run_in_executor(
+                self.executor, 
+                si.get_data, 
+                "SPY", 
+            )
+            
+            self.stockHistoryPriceCollection.insert_many([
+                self.convertToStockHistory(dp) for _, dp in historyPrice.iterrows()
+            ])
+            
+        except Exception as e:
+            print(f"Error fetching data for SPY: {e}")
+            with open("data/error.log", "a") as f:
+                f.write(f"SPY: {e}\n")
+            return
+        
     async def getStockData(self, ticker: str, delay: int = 1) -> None:
         try:
             print(f"Fetching data for {ticker}")
@@ -158,10 +177,11 @@ class yahooService:
                 ticker, 
             )
             print(f"Data fetched for {ticker}")
-            await asyncio.sleep(delay)  # Add delay to prevent rate limiting
+            await asyncio.sleep(delay)
         except Exception as e:
             print(f"Error fetching data for {ticker}: {e}")
-            self.errorTickers.append((ticker, e))
+            with open("data/error.log", "a") as f:
+                f.write(f"{ticker}: {e}\n")
             return
         
         stockData = self.readNasdaq()
@@ -175,19 +195,24 @@ class yahooService:
         self.insertData(stockData, historyPrice)
         return
     
-    async def initDatabase(self, batchSize: int = 20, delayBetweenBatches: int = 5, delayBetweenRequests: int = 1, isTest: bool = False):
-        self.checkBox()
+    async def initDatabase(
+        self, 
+        batchSize: int = 20, 
+        delayBetweenBatches: int = 5, 
+        delayBetweenRequests: int = 1, 
+        isTest: bool = False):
         
+        self.checkBox()
         nasdaq = self.readNasdaq()
         if nasdaq is None:
             return
         tickers = self.getTickers(nasdaq)
-        
         if isTest:
             tickers = tickers[:100]
-            
         self.setUpDatabase()
         
+        await self.getNasdaqIndex()
+                
         tasks = []
         results = []
 
@@ -211,9 +236,4 @@ class yahooService:
                 results.extend(await asyncio.gather(*tasks))
 
         await processTickers()
-
-        os.makedirs("logs", exist_ok=True)
-        with open("logs/errorTickers.txt", "w") as f:
-            for ticker, error in self.errorTickers:
-                f.write(f"{ticker}: {error}\n")
     
