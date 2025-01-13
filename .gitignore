@@ -5,7 +5,7 @@ database
 
 __pycache__
 
-*.ipynb
+test.ipynb
 *.log
 test.py
 app/services/logs/errorTickers.txt
