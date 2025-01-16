@@ -11,6 +11,7 @@ from app.services.OptimizeService import OptimizeService
 from app.schemas.investorView import investorViewInput, investorView
 from app.schemas.constraint import constraint
 from fastapi.responses import JSONResponse
+from app.utils.helper import processResponse, convertInvestorView, checkLongestDays, convertToGraphFormat
 import numpy as np
 
 router = APIRouter()
@@ -39,7 +40,7 @@ def optimize(
                 status_code=404
             )
 
-        longestDays = checkLongestDay(stockDataList)
+        longestDays = checkLongestDays(stockDataList)
 
         stockData = db['stockHistoryPrice'].find({'symbol': {'$in': stocks}}).sort('date', -1).limit(len(stocks) * longestDays)
         stockDf = pd.DataFrame(list(stockData))
@@ -139,7 +140,7 @@ def change(
                 status_code=404
             )
 
-        longestDays = checkLongestDay(stockDataList)
+        longestDays = checkLongestDays(stockDataList)
 
         stockData = db['stockHistoryPrice'].find({'symbol': {'$in': stocks}}).sort('date', -1).limit(len(stocks) * longestDays)
         stockDf = pd.DataFrame(list(stockData))
@@ -196,61 +197,6 @@ def change(
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-def convertToGraphFormat(diversification):
-    nodes = [{"name": "Portfolio 100%"}]
-    nodes += [{"name": f"{sector} {percentage * 100:.2f}%"} for sector, percentage in diversification.items() if percentage * 100 >= 0.01]
-    links = [{"source": 0, "target": i, "value": percentage * 100} for i, (_, percentage) in enumerate(diversification.items(), start=1) if percentage * 100 >= 0.01]
-    result = {
-        "nodes": nodes,
-        "links": links
-    }
-    return result
 
-def convertInvestorView(investorViews: List[investorViewInput], stocks: List[str], maxVariance: float) -> investorView:
-    P = np.zeros((len(investorViews), len(stocks)))
-    Q = np.zeros(len(investorViews))
-    Omega = np.zeros((len(investorViews), len(investorViews)))
 
-    for i, view in enumerate(investorViews):
-        P[i][stocks.index(view.asset1)] = 1
-        if view.asset2:
-            P[i][stocks.index(view.asset2)] = -1
-        Q[i] = view.percentage / 100
-        Omega[i][i] = maxVariance * (1 - (view.confidence / 100)) / view.confidence
 
-    return investorView(P=P.tolist(), Q=Q.tolist(), Omega=Omega.tolist(), size=len(investorViews))
-
-def processResponse(data, roundParam=2):
-    if isinstance(data, np.ndarray):
-        data = data.tolist()
-
-    if isinstance(data, list):
-        return [processResponse(element, roundParam) for element in data]
-
-    elif isinstance(data, dict):
-        return {key: processResponse(value, roundParam) for key, value in data.items()}
-
-    elif isinstance(data, float):
-        return round(data, roundParam)
-
-    else:
-        return data
-
-def getYearByName(name):
-    if name not in ['annual5YrsReturn', 'annual3YrsReturn', 'annual1YrReturn']:
-        return None
-    return int(name.split('annual')[1].split('YrsReturn')[0])
-
-def checkLongestDay(stockDataList):
-    times = ['annual5YrsReturn', 'annual3YrsReturn', 'annual1YrReturn']
-    for time in times:
-        for stockData in stockDataList:
-            if stockData[time] is None:
-                break
-        else:
-            return getYearByName(time) * 252
-    minDays = float('inf')
-    for stockData in stockDataList:
-        if stockData['dataCollectedDays'] < minDays:
-            minDays = stockData['dataCollectedDays']
-    return minDays
