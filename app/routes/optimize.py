@@ -69,9 +69,9 @@ def optimize(
             finalReturns = posteriorReturns
             finalCovMatrix = posteriorCovMatrix
         else:
-            finalReturns = returns
+            finalReturns = priorReturns
             finalCovMatrix = covMatrix
-
+                        
         if constraint.isReturn:
             weights = optimizeService.optimizeFixedReturn(constraint.percentage, finalReturns, finalCovMatrix)
         else:
@@ -83,11 +83,11 @@ def optimize(
         portfolioSeries = stockDf.dot(weights)
         combinedDf = pd.concat([portfolioSeries, marketDf], axis=1).tail(min(days, longestDays))
         combinedDf = combinedDf.rename(columns={'SPY': 'market', 0: 'portfolio'})
-        combinedDf['portfolioReturn'] = combinedDf['portfolio'].pct_change()
+        combinedDf['portfolioReturn'] = combinedDf['portfolio'].pct_change(fill_method=None)
 
         metrics = portfolioService.getPortfolioMetrics(weights, returns, covMatrix, combinedDf['portfolioReturn'], confidentLevel, riskFreeRate)
 
-        combinedDf['marketReturn'] = combinedDf['market'].pct_change()
+        combinedDf['marketReturn'] = combinedDf['market'].pct_change(fill_method=None)
         cumulativeReturns = combinedDf[['portfolioReturn', 'marketReturn']].cumsum().dropna()
         portfolioVsMarket = {
             "days": cumulativeReturns.index.strftime("%Y-%m-%d").tolist(),
@@ -95,8 +95,8 @@ def optimize(
             "market": cumulativeReturns["marketReturn"].tolist(),
         }
 
-        minVolatile = round(np.sqrt(1 / np.sum(np.linalg.pinv(covMatrix))), 2) + PADDING / 100
-        maxVolatile = round(max([np.sqrt(covMatrix[x][x]) for x in range(len(covMatrix))]), 2) - PADDING / 100
+        minVolatile = round(np.sqrt(1 / np.sum(np.linalg.pinv(covMatrix))), 3) + PADDING / 100
+        maxVolatile = round(max([np.sqrt(covMatrix[x][x]) for x in range(len(covMatrix))]), 3) - PADDING / 100
 
         meanVarianceGraph = optimizeService.optimizeRangeRisk(minVolatile, maxVolatile, volatilityStep, returns, covMatrix, riskFreeRate)
         responseData = {
@@ -167,9 +167,9 @@ def change(
         portfolioSeries = stockDf.dot(weights)
         combinedDf = pd.concat([portfolioSeries, marketDf], axis=1).tail(min(days, longestDays))
         combinedDf = combinedDf.rename(columns={'SPY': 'market', 0: 'portfolio'})
-        combinedDf['portfolioReturn'] = combinedDf['portfolio'].pct_change()
+        combinedDf['portfolioReturn'] = combinedDf['portfolio'].pct_change(fill_method=None)
         metrics = portfolioService.getPortfolioMetrics(weights, returns, covMatrix, combinedDf['portfolioReturn'], confidentLevel, riskFreeRate)
-        combinedDf['marketReturn'] = combinedDf['market'].pct_change()
+        combinedDf['marketReturn'] = combinedDf['market'].pct_change(fill_method=None)
         cumulativeReturns = combinedDf[['portfolioReturn', 'marketReturn']].cumsum().dropna()
         portfolioVsMarket = {
             "days": cumulativeReturns.index.strftime("%Y-%m-%d").tolist(),

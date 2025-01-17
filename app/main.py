@@ -9,8 +9,9 @@ load_dotenv()
 app = FastAPI()
 
 origins = [
-    "http://192.168.1.52:3000",  # Allow your frontend
-    os.getenv("FRONTEND_URL"),    # Allow your frontend
+    "http://192.168.1.52:3000",
+    "http://10.31.68.46:3000",
+    os.getenv("FRONTEND_URL"),
 ]
 
 app.add_middleware(

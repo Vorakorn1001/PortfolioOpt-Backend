@@ -52,6 +52,8 @@ class OptimizeService:
                 "volatility": self.portfolioService.getPortfolioStdDev(optimal_weights, cov_matrix),
                 "sharpeRatio": self.portfolioService.getPortfolioSharpeRatio(optimal_weights, mean_returns, cov_matrix, riskFreeRate)
             })
+            if 1.0 in optimal_weights:
+                break
             target_volatility += step
         
         return results
