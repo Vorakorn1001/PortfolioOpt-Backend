@@ -1,41 +1,29 @@
-from pymongo import MongoClient
-from fastapi import APIRouter
-import numpy as np
+from app.utils.helper import processResponse
+from fastapi.responses import JSONResponse
 from app.models.database import db
-import os
+from fastapi import APIRouter
 
 router = APIRouter()
 
-def processResponse(item):
-    # Remove _id from the document
-    if "_id" in item:
-        item["_id"] = str(item["_id"])
-    # item.pop("_id", None)  # Safely remove _id if it exists
-    for key, value in item.items():
-        if isinstance(value, float):
-            item[key] = round(value, 2)
-        if key == "marketCap":
-            if value >= 1_000_000_000_000:
-                item[key] = f"{value / 1_000_000_000_000:.1f}t"
-            elif value >= 1_000_000_000:
-                item[key] = f"{value / 1_000_000_000:.1f}b"
-            elif value >= 1_000_000:
-                item[key] = f"{value / 1_000_000:.1f}m"
-    return item
-
-
 @router.get("/{length}")
 def get_stock(length: int, size: int = 20):
-    collection = db["stockData"]
-    skip = length
-    top_stocks = (
-        collection.find()
-        .sort("marketCap", -1)
-        .skip(skip)
-        .limit(size)
-    )
-    top_stocks_list = [processResponse(item) for item in top_stocks]
-    return top_stocks_list
+    try:
+        collection = db["stockData"]
+        skip = length
+        top_stocks = (
+            collection.find()
+            .sort("marketCap", -1)
+            .skip(skip)
+            .limit(size)
+        )
+        top_stocks_list = processResponse(list(top_stocks))
+        return JSONResponse(content=top_stocks_list, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+    except ValueError as ve:
+        return JSONResponse(content={"error": str(ve)}, status_code=400)
+    except KeyError as ke:
+        return JSONResponse(content={"error": f"KeyError: {ke}"}, status_code=400)
 
 @router.get("/")
 def get_stock_default(size: int = 20):

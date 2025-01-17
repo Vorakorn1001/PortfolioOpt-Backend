@@ -1,13 +1,16 @@
-from fastapi import FastAPI
-from app.routes import stock, portfolio, optimize
-from app.models.database import db
+from app.routes import stock, portfolio, optimize, ibkr
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+from fastapi import FastAPI
+import os
+
+load_dotenv()
 
 app = FastAPI()
 
 origins = [
     "http://192.168.1.52:3000",  # Allow your frontend
-    "http://localhost:3000",   
+    os.getenv("FRONTEND_URL"),    # Allow your frontend
 ]
 
 app.add_middleware(
@@ -22,7 +25,8 @@ app.add_middleware(
 app.include_router(stock.router, prefix="/stock")
 app.include_router(portfolio.router, prefix="/portfolio")
 app.include_router(optimize.router, prefix="/optimize")
+app.include_router(ibkr.router, prefix="/ibkr")
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to my FastAPI project!"}
+    return {"message": "Nothing to see here, move along"}
