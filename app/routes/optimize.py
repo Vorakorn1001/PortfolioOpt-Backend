@@ -13,17 +13,29 @@ from app.schemas.constraint import constraint
 from fastapi.responses import JSONResponse
 from app.utils.helper import processResponse, convertInvestorView, checkLongestDays, convertToGraphFormat
 import numpy as np
+from datetime import datetime
 
 router = APIRouter()
 
 PADDING = 2
+DAYS = 1260
+
+timeframeDict = {
+    "ytd": int(np.busday_count(datetime(datetime.now().year, 1, 1).strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d'))),
+    "1m": 21,
+    "3m": 63,
+    "6m": 126,
+    "1y": 252,
+    '3y': 756,
+    "5y": 1260
+}
 
 @router.post("/")
 def optimize(
     stocks: List[str],
     constraint: constraint,
     investorViews: List[investorViewInput],
-    days: int = 252,
+    timeframe: str,
     portfolioService: PortfolioService = Depends(getPortfolioService),
     optimizeService: OptimizeService = Depends(getOptimizeService),
     riskFreeRate=0.02,
@@ -33,6 +45,8 @@ def optimize(
     try:
         stocks = sorted(stocks)
         stockDataList = db['stockData'].find({'symbol': {'$in': stocks}}).to_list()
+        
+        days = timeframeDict[timeframe]
 
         if len(stockDataList) != len(stocks):
             return JSONResponse(
@@ -123,7 +137,7 @@ def optimize(
 def change(
     stocks: List[str],
     weights: List[float],
-    days: int = 252,
+    timeframe: str,
     portfolioService: PortfolioService = Depends(getPortfolioService),
     optimizeService: OptimizeService = Depends(getOptimizeService),
     riskFreeRate=0.02,
@@ -133,6 +147,8 @@ def change(
     try:
         stocks = sorted(stocks)
         stockDataList = db['stockData'].find({'symbol': {'$in': stocks}}).to_list()
+        
+        days = timeframeDict[timeframe]
 
         if len(stockDataList) != len(stocks):
             return JSONResponse(
@@ -197,6 +213,81 @@ def change(
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
+@router.post("/performance")
+def performance(
+    stocks: List[str],
+    weights: List[float],
+    timeframe: str,
+    portfolioService: PortfolioService = Depends(getPortfolioService),
+    optimizeService: OptimizeService = Depends(getOptimizeService),
+    riskFreeRate=0.02,
+    confidentLevel=0.95,
+    volatilityStep=0.01
+):
+    try:
+        stocks = sorted(stocks)
+        stockDataList = db['stockData'].find({'symbol': {'$in': stocks}}).to_list()
 
+        days = timeframeDict[timeframe]
+        
+        print(days)
+
+        if len(stockDataList) != len(stocks):
+            return JSONResponse(
+                content={"status": "Error", "detail": "Can't find stock in our database"},
+                status_code=404
+            )
+
+        longestDays = checkLongestDays(stockDataList)
+
+        stockData = db['stockHistoryPrice'].find({'symbol': {'$in': stocks}}).sort('date', -1).limit(len(stocks) * longestDays)
+        stockDf = pd.DataFrame(list(stockData))
+
+        if len(stockDf) != len(stocks) * longestDays:
+            return JSONResponse(
+                content={"status": "Error", "detail": "Some history data is missing"},
+                status_code=404
+            )
+
+        stockDf = stockDf[['date', 'symbol', 'close']].pivot(index='date', columns='symbol', values='close')
+
+        marketData = db['stockHistoryPrice'].find({'symbol': "SPY"}).sort('date', -1).limit(longestDays)
+        marketDf = pd.DataFrame(list(marketData))
+        marketDf = marketDf[['date', 'symbol', 'close']].pivot(index='date', columns='symbol', values='close')
+
+        dfReturn = stockDf.pct_change(fill_method=None).dropna()
+        returns = dfReturn.mean() * 252
+        covMatrix = np.cov(dfReturn, rowvar=False) * 252
+
+        portfolioSeries = stockDf.dot(weights)
+        combinedDf = pd.concat([portfolioSeries, marketDf], axis=1).tail(min(days, longestDays))
+        combinedDf = combinedDf.rename(columns={'SPY': 'market', 0: 'portfolio'})
+        combinedDf['portfolioReturn'] = combinedDf['portfolio'].pct_change(fill_method=None)
+        metrics = portfolioService.getPortfolioMetrics(weights, returns, covMatrix, combinedDf['portfolioReturn'], confidentLevel, riskFreeRate)
+        combinedDf['marketReturn'] = combinedDf['market'].pct_change(fill_method=None)
+        cumulativeReturns = combinedDf[['portfolioReturn', 'marketReturn']].cumsum().dropna()
+        portfolioVsMarket = {
+            "days": cumulativeReturns.index.strftime("%Y-%m-%d").tolist(),
+            "portfolio": cumulativeReturns["portfolioReturn"].tolist(),
+            "market": cumulativeReturns["marketReturn"].tolist(),
+        }
+
+        responseData = {
+            "status": "Success",
+            "stocks": stocks,
+            "weights": weights,
+            "metrics": metrics,
+            "portfolioVsMarket": portfolioVsMarket,
+            "days": longestDays
+        }
+        responseData = processResponse(responseData, 4)
+        return JSONResponse(content=responseData, status_code=200)
+    
+    except KeyError as ke:
+        raise HTTPException(status_code=400, detail=f"KeyError: {ke}")
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=f"ValueError: {ve}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 

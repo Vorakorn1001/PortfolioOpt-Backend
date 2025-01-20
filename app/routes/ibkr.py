@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 from app.utils.helper import processResponse
 from fastapi.responses import JSONResponse
+from fastapi import HTTPException
 from app.models.database import db
 import pandas as pd
 
@@ -15,9 +16,18 @@ def getStockList(df: pd.DataFrame) -> list:
 def uploadFile(
     file: UploadFile = File(...)
 ):
-    try:
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="File must be a CSV file")
+    
+    try :
         data = pd.read_csv(file.file)
         stockList = getStockList(data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    if len(stockList) == 0: raise HTTPException(status_code=400, detail="No stocks found in the file")
+    
+    try:
         stockData = list(collection.find({"symbol": {"$in": stockList}}))
         response = processResponse(stockData)
         response = {
@@ -25,6 +35,4 @@ def uploadFile(
         }
         return JSONResponse(content=response, status_code=200)
     except Exception as e:
-        return {"error": str(e)}
-    except ValueError as ve:
-        return {"error": str(ve)}
+        raise HTTPException(status_code=400, detail=str(e))

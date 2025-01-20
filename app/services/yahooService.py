@@ -1,6 +1,6 @@
 import sys
 import os
-from app.schemas.stockData import homePageStockData
+from app.schemas.stockData import stockData
 from app.schemas.stockHistoryPrice import stockHistoryPrice
 from app.models.database import db
 from datetime import datetime
@@ -136,7 +136,7 @@ class YahooService:
             "symbol": data["ticker"],
         }
 
-    def insertData(self, stockData: homePageStockData, stockHistory: List[stockHistoryPrice]):
+    def insertData(self, stockData: stockData, stockHistory: List[stockHistoryPrice]):
         try:
             self.stockDataCollection.insert_one(stockData)
             self.stockHistoryPriceCollection.insert_many(stockHistory)

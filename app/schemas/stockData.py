@@ -1,6 +1,8 @@
 from pydantic import BaseModel
+from typing import Optional
 
-class homePageStockData(BaseModel):
+class stockData(BaseModel):
+    id: Optional[str]
     symbol: str
     name: str
     price: float
@@ -10,6 +12,6 @@ class homePageStockData(BaseModel):
     ytdReturn: float
     sector: str
     industry: str
-    marketCap: float
+    marketCap: float | str
     dataCollectedDays: int
     

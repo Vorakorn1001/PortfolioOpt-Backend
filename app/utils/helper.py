@@ -19,7 +19,8 @@ def processResponse(data, roundParam=2):
     elif isinstance(data, dict):
         # If '_id' is present, convert it to string
         if "_id" in data:
-            data["_id"] = str(data["_id"])
+            data["id"] = str(data["_id"])
+            del data["_id"]
 
         # Iterate over each key-value pair in the dictionary
         for key, value in data.items():

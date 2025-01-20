@@ -1,4 +1,4 @@
-from app.routes import stock, portfolio, optimize, ibkr
+from app.routes import stock, portfolio, optimize, ibkr, user
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -27,6 +27,7 @@ app.include_router(stock.router, prefix="/stock")
 app.include_router(portfolio.router, prefix="/portfolio")
 app.include_router(optimize.router, prefix="/optimize")
 app.include_router(ibkr.router, prefix="/ibkr")
+app.include_router(user.router, prefix="/user")
 
 @app.get("/")
 def read_root():
