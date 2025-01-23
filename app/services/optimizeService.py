@@ -16,7 +16,8 @@ class OptimizeService:
         ef.efficient_return(target_return)
         optimal_weights = ef.clean_weights()
         return list(optimal_weights.values())
-        
+
+        # Can't be use due to negative weights/overweight
         # mean_returns = np.array(mean_returns)
         # cov_matrix_inv = np.linalg.inv(cov_matrix)
         # ones = np.ones(len(mean_returns))

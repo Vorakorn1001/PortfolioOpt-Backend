@@ -23,7 +23,7 @@ def uploadFile(
         data = pd.read_csv(file.file)
         stockList = getStockList(data)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail="Can't read the file")
     
     if len(stockList) == 0: raise HTTPException(status_code=400, detail="No stocks found in the file")
     
@@ -35,4 +35,4 @@ def uploadFile(
         }
         return JSONResponse(content=response, status_code=200)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Can't find stock in our database")

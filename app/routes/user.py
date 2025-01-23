@@ -5,7 +5,7 @@ from app.schemas.stockData import stockData
 from app.schemas.investorView import investorView, investorViewInput
 from app.schemas.portfolioData import portfolio, portfolioData, portfolioDB, portfolioInput
 from app.models.database import db
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Optional
 from datetime import datetime
 
@@ -43,7 +43,11 @@ def convertId(data: Dict) -> Dict:
         del data["id"]
     return data
 
-def mergePortfolioData(user: userData, portfolioDBList: List[portfolioDB], portfolioData: portfolioData) -> List[portfolioDB]:
+def mergePortfolioData(
+    user: userData, 
+    portfolioDBList: List[portfolioDB], 
+    portfolioData: portfolioData
+    ) -> List[portfolioDB]:
     # Convert portfolioDBList to a dictionary for quick lookup by activePortfolio
     portfolioDataName = list(portfolioData.portfolios.keys())
     portfolioDataDB = convertPortfolioDataToPortfolioDB(user, portfolioData)
@@ -74,7 +78,10 @@ def mergePortfolioData(user: userData, portfolioDBList: List[portfolioDB], portf
 # Frontend Use for signIn/login
 # Get user's portfolio data
 @router.post("/signIn")
-def signIn(user: userData, portfolio: portfolioData):
+def signIn(
+    user: userData, 
+    portfolio: portfolioData
+    ):
     # Input: userData, portfolioData
     # Output: portfolioData
     # Get a local portfolio data and return the portfolio data
@@ -120,66 +127,156 @@ def signIn(user: userData, portfolio: portfolioData):
 # Frontend Use when there are update in portfolioData
 # Update and Merge user's portfolio data
 @router.post("/updateAssets")
-def Update(user: userData, portfolio: List[stockData]):
+def Update(
+    user: userData, 
+    portfolio: List[stockData]
+    ):
     # Input: userData, portfolioData
     # Output: status_code
     # Get a local portfolio data, update the user's portfolio data and return the updated portfolio data
 
-    try:
+    # try:
         userCollection = db["usersData"]
         portfolioCollection = db["portfolioData"]
         userRecord = userCollection.find_one({"email": user.email})
-        if userRecord is None: return JSONResponse(content={"error": "User not found"}, status_code=404)
         
-        activePortfolio = userRecord["activePortfolio"]    
-    
+        if userRecord is None: 
+            newUser = userDB(
+                email=user.email, 
+                name=user.name,
+                image=user.image,
+                activePortfolio="Portfolio", 
+                createdAt=datetime.now(), 
+                updatedAt=datetime.now()
+                )
+            userCollection.insert_one(newUser.model_dump())
+            userRecord = userCollection.find_one({"email": user.email})
+        
+        activePortfolio = user.activePortfolio 
+        
+        if activePortfolio != userRecord["activePortfolio"]:
+            userRecord["activePortfolio"] = activePortfolio
+            userRecord["updatedAt"] = datetime.now()
+            userCollection.replace_one({"email": user.email}, userRecord)
+        
+        stockDataList = [x.model_dump() for x in portfolio]
+        
         portfolioDatabase = portfolioCollection.find_one({"email": user.email, "name": activePortfolio})
-        if portfolioDatabase is None: return JSONResponse(content={"error": "Portfolio not found"}, status_code=404)
-        
-        portfolioDatabase["portfolio"]["assets"] = [x.model_dump() for x in portfolio]
-        portfolioDatabase["updatedAt"] = datetime.now()
-        portfolioCollection.replace_one({"email": user.email, "name": activePortfolio}, portfolioDatabase)
+        if portfolioDatabase is None:
+            portfolioDatabase = {
+                "email": user.email, 
+                "name": activePortfolio, 
+                "portfolio": {
+                    "assets": stockDataList,
+                    "investorViews": []
+                    },
+                "createdAt": datetime.now(),
+                "updatedAt": datetime.now()
+            }
+            portfolioCollection.insert_one(portfolioDatabase)
+        else:
+            portfolioDatabase["portfolio"]["assets"] = stockDataList
+            portfolioDatabase["updatedAt"] = datetime.now()
+            portfolioCollection.replace_one({"email": user.email, "name": activePortfolio}, portfolioDatabase)
         
         return JSONResponse(content={"status": "success"}, status_code=200)
-    
-    except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-    except ValueError as ve:
-        return JSONResponse(content={"error": str(ve)}, status_code=400)
-    except KeyError as ke:
-        return JSONResponse(content={"error": f"KeyError: {ke}"}, status_code=400)
-    except TypeError as te:
-        return JSONResponse(content={"error": f"TypeError: {te}"}, status_code=400)
     
 @router.post("/updatePortfolio")
-def Update(user: userData, portfolio: portfolioInput):
+def Update(
+    user: userData, 
+    portfolio: portfolioInput
+    ):
     # Input: userData, portfolioData
     # Output: status_code
     # Get a local portfolio data, update the user's portfolio data and return the updated portfolio data
-
     try:
         userCollection = db["usersData"]
         portfolioCollection = db["portfolioData"]
         userRecord = userCollection.find_one({"email": user.email})
-        if userRecord is None: return JSONResponse(content={"error": "User not found"}, status_code=404)
+        if userRecord is None: 
+            newUser = userDB(
+                email=user.email, 
+                name=user.name,
+                image=user.image,
+                activePortfolio="Portfolio", 
+                createdAt=datetime.now(), 
+                updatedAt=datetime.now()
+                )
+            userCollection.insert_one(newUser.model_dump())
+            userRecord = userCollection.find_one({"email": user.email})
         
-        activePortfolio = userRecord["activePortfolio"]    
-    
+        activePortfolio = user.activePortfolio 
+        
+        if user.activePortfolio != userRecord["activePortfolio"]:
+            userRecord["activePortfolio"] = activePortfolio
+            userRecord["updatedAt"] = datetime.now()
+            userCollection.replace_one({"email": user.email}, userRecord)
+        
         portfolioDatabase = portfolioCollection.find_one({"email": user.email, "name": activePortfolio})
-        if portfolioDatabase is None: return JSONResponse(content={"error": "Portfolio not found"}, status_code=404)
-        
-        portfolioDatabase["portfolio"] = portfolio.model_dump()
-        portfolioDatabase["updatedAt"] = datetime.now()
-        
-        portfolioCollection.replace_one({"email": user.email, "name": activePortfolio}, portfolioDatabase)
+        if portfolioDatabase is None:
+            portfolioDatabase = {
+                "email": user.email, 
+                "name": activePortfolio, 
+                "portfolio": portfolio.model_dump(),
+                "createdAt": datetime.now(),
+                "updatedAt": datetime.now()
+            }
+            portfolioCollection.insert_one(portfolioDatabase)
+        else:
+            portfolioDatabase["portfolio"] = portfolio.model_dump()
+            portfolioDatabase["updatedAt"] = datetime.now()
+            portfolioCollection.replace_one({"email": user.email, "name": activePortfolio}, portfolioDatabase)
         
         return JSONResponse(content={"status": "success"}, status_code=200)
-    
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-    except ValueError as ve:
-        return JSONResponse(content={"error": str(ve)}, status_code=400)
-    except KeyError as ke:
-        return JSONResponse(content={"error": f"KeyError: {ke}"}, status_code=400)
-    except TypeError as te:
-        return JSONResponse(content={"error": f"TypeError: {te}"}, status_code=400)
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/deletePortfolio")
+def deletePortfolio(
+    user: userData,
+    portfolioName: str
+    ):
+    # Input: userData, portfolioData
+    # Output: status_code
+    # Get a local portfolio data, delete the user's portfolio data and return the updated portfolio data
+    try:
+        userCollection = db["usersData"]
+        portfolioCollection = db["portfolioData"]
+        userRecord = userCollection.find_one({"email": user.email})
+        if userRecord is None: 
+            raise HTTPException(status_code=400, detail="User not found")
+        newActivePortfolioRecord = portfolioCollection.find_one({"email": user.email, "name": portfolioName})
+        if newActivePortfolioRecord is None:
+            raise HTTPException(status_code=400, detail="Portfolio not found")
+        userRecord["activePortfolio"] = user.activePortfolio
+        userRecord["updatedAt"] = datetime.now()
+        userCollection.replace_one({"email": user.email}, userRecord)
+        portfolioCollection.delete_one({"email": user.email, "name": portfolioName})
+        return JSONResponse(content={"status": "success"}, status_code=200)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/updateActivePortfolio")
+def updateActivePortfolio(
+    user: userData,
+    ):
+    # Input: userData, activePortfolio
+    # Output: status_code
+    # Get a local portfolio data, update the user's active portfolio and return the updated portfolio data
+    try:
+        userCollection = db["usersData"]
+        portfolioCollection = db["portfolioData"]
+        userRecord = userCollection.find_one({"email": user.email})
+        if userRecord is None: 
+            raise HTTPException(status_code=400, detail="User not found")
+        portfolioRecord = portfolioCollection.find_one({"email": user.email, "name": user.activePortfolio})
+        if portfolioRecord is None:
+            raise HTTPException(status_code=400, detail="Portfolio not found")
+        userRecord["activePortfolio"] = user.activePortfolio
+        userRecord["updatedAt"] = datetime.now()
+        userCollection.replace_one({"email": user.email}, userRecord)
+        return JSONResponse(content={"status": "success"}, status_code=200)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    

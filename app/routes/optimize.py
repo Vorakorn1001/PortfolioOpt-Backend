@@ -230,8 +230,6 @@ def performance(
 
         days = timeframeDict[timeframe]
         
-        print(days)
-
         if len(stockDataList) != len(stocks):
             return JSONResponse(
                 content={"status": "Error", "detail": "Can't find stock in our database"},

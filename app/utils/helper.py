@@ -1,8 +1,15 @@
 from app.schemas.investorView import investorViewInput, investorView
-from typing import List
+from app.schemas.stockData import stockData
+from typing import List, Optional, Dict
 import numpy as np
+import math
+import re
 
 def processResponse(data, roundParam=2):
+    # Check for NaN
+    if isinstance(data, float) and math.isnan(data):
+        return None
+     
     # Round the value if it's a float
     if isinstance(data, float):
         return round(data, roundParam)
@@ -14,6 +21,9 @@ def processResponse(data, roundParam=2):
     # If data is a list, recursively process each element
     if isinstance(data, list):
         return [processResponse(element, roundParam) for element in data]
+    
+    if isinstance(data, stockData):
+        return processResponse(data.model_dump())
 
     # If data is a dictionary, recursively process each key-value pair
     elif isinstance(data, dict):
@@ -81,3 +91,104 @@ def convertToGraphFormat(diversification):
         "links": links
     }
     return result
+
+def generateQuery(
+    searchTerm: Optional[str], 
+    sectors: Optional[List[str]] = None, 
+    marketCaps: Optional[List[str]] = None, 
+) -> Dict:
+    marketCapRange = {
+        "Mega": {"$gt": 200_000_000_000},
+        "Large": {"$gte": 10_000_000_000, "$lte": 200_000_000_000},
+        "Medium": {"$gte": 2_000_000_000, "$lte": 10_000_000_000},
+        "Small": {"$gte": 300_000_000, "$lte": 2_000_000_000},
+        "Micro": {"$gte": 50_000_000, "$lte": 300_000_000},
+        "Nano": {"$lt": 50_000_000}
+    }
+    
+    query = {"$and": []}
+
+    # Add sectors filter if provided
+    if sectors:
+        query["$and"].append({"sector": {"$in": sectors}})
+
+    # Add market cap filter if provided
+    if marketCaps and marketCapRange:
+        marketCapsQuery = [marketCapRange[marketCap] for marketCap in marketCaps if marketCap in marketCapRange]
+        if marketCapsQuery:
+            query["$and"].append({"$or": [{"marketCap": cap} for cap in marketCapsQuery]})
+
+    # Add search term filter if provided
+    if searchTerm:
+        escapedTerm = re.escape(searchTerm)
+        query["$and"].append({
+            "$or": [
+                {"name": {"$regex": escapedTerm, "$options": "i"}},
+                {"symbol": {"$regex": escapedTerm, "$options": "i"}}
+            ]
+        })
+
+    # Remove $and if it's empty
+    if not query["$and"]:
+        query.pop("$and")
+
+    return query
+
+def generateRadarWeights(values):
+    keys = [
+        "returnMinMax",
+        "volatileMinMax",
+        "marketCapMinMax",
+        "betaMinMax",
+        "threeMthsMomentumMinMax"
+    ]
+    return dict(zip(keys, values))
+
+def generatePipeline(
+    searchTerm: Optional[str], 
+    sectors: Optional[List[str]] = None, 
+    marketCaps: Optional[List[str]] = None, 
+    radar: Optional[List[int]] = None,
+    skip: Optional[int] = 0,
+    size: Optional[int] = 20,
+    ascending: Optional[bool] = False
+) -> Dict:
+    query = generateQuery(searchTerm, sectors, marketCaps)
+    pipeline = []
+    if query:
+        pipeline.append({"$match": query})
+    if radar:
+        weights = generateRadarWeights(radar)
+        pipeline.append({
+        "$addFields": {
+            "weightedSum": {
+                "$add": [
+                    {"$multiply": ["$returnMinMax", weights["returnMinMax"]]},
+                    {"$multiply": ["$volatileMinMax", weights["volatileMinMax"]]},
+                    {"$multiply": ["$marketCapMinMax", weights["marketCapMinMax"]]},
+                    {"$multiply": ["$betaMinMax", weights["betaMinMax"]]},
+                    {"$multiply": ["$threeMthsMomentumMinMax", weights["threeMthsMomentumMinMax"]]}
+                ]
+            }
+        }
+    })
+    pipeline.append({"$sort": {"weightedSum": 1 if ascending else -1}})
+    pipeline.append({"$skip": skip})
+    pipeline.append({"$limit": size})
+    return pipeline
+
+def reshapeStockData(data: List[Dict]) -> List[stockData]:
+    reshaped_list = []
+    stock_data_fields = stockData.__annotations__.keys()
+    
+    for item in data:
+        reshaped_data = {}
+        reshaped_data["id"] = str(item["_id"])
+        for field in stock_data_fields:
+            if field == "id":
+                continue
+            reshaped_data[field] = item.get(field, getattr(stockData, field, None))
+        reshaped_list.append(stockData(**reshaped_data))
+    
+    return reshaped_list
+        

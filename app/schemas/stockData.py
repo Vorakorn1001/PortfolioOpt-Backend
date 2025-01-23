@@ -6,12 +6,28 @@ class stockData(BaseModel):
     symbol: str
     name: str
     price: float
+    annual5YrsReturn: float | None
+    annual3YrsReturn: float | None
+    annual1YrReturn: float
+    ytdReturn: float  
+    sector: str
+    industry: str
+    marketCap: float | str
+    dataCollectedDays: int
+
+class stockDB(stockData):
+    symbol: str
+    name: str
+    price: float
     annual5YrsReturn: float
     annual3YrsReturn: float
     annual1YrReturn: float
+    fiveYrsVolatility: float
+    threeYrsVolatility: float
+    oneYrVolatility: float
+    threeMthsMomentum: float
     ytdReturn: float
     sector: str
     industry: str
     marketCap: float | str
     dataCollectedDays: int
-    

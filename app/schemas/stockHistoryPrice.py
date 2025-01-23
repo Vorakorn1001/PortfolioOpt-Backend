@@ -8,5 +8,6 @@ class stockHistoryPrice(BaseModel):
     high: float
     low: float
     close: float
+    adjclose: float
     volume: int
     
