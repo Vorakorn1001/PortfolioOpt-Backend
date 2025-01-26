@@ -19,6 +19,7 @@ router = APIRouter()
 
 PADDING = 2
 DAYS = 1260
+VOLATILITY_STEP = 0.02
 
 timeframeDict = {
     "ytd": int(np.busday_count(datetime(datetime.now().year, 1, 1).strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d'))),
@@ -40,7 +41,6 @@ def optimize(
     optimizeService: OptimizeService = Depends(getOptimizeService),
     riskFreeRate=0.02,
     confidentLevel=0.95,
-    volatilityStep=0.02
 ):
     try:
         stocks = sorted(stocks)
@@ -117,7 +117,7 @@ def optimize(
         minVolatile = round(np.sqrt(1 / np.sum(np.linalg.pinv(covMatrix))), 3) + PADDING / 100
         maxVolatile = round(max([np.sqrt(covMatrix[x][x]) for x in range(len(covMatrix))]), 3) - PADDING / 100
 
-        meanVarianceGraph = optimizeService.optimizeRangeRisk(minVolatile, maxVolatile, volatilityStep, returns, covMatrix, riskFreeRate)
+        meanVarianceGraph = optimizeService.optimizeRangeRisk(minVolatile, maxVolatile, VOLATILITY_STEP, returns, covMatrix, riskFreeRate)
         responseData = {
             "status": "Success",
             "stocks": stocks,
@@ -147,7 +147,6 @@ def change(
     optimizeService: OptimizeService = Depends(getOptimizeService),
     riskFreeRate=0.02,
     confidentLevel=0.95,
-    volatilityStep=0.01
 ):
     try:
         stocks = sorted(stocks)
@@ -234,7 +233,6 @@ def performance(
     optimizeService: OptimizeService = Depends(getOptimizeService),
     riskFreeRate=0.02,
     confidentLevel=0.95,
-    volatilityStep=0.01
 ):
     try:
         stocks = sorted(stocks)
