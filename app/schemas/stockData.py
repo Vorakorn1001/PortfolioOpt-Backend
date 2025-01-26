@@ -9,13 +9,16 @@ class stockData(BaseModel):
     annual5YrsReturn: float | None
     annual3YrsReturn: float | None
     annual1YrReturn: float
-    ytdReturn: float  
+    ytdReturn: float
+    volatility: float
+    momentum: float
+    beta: float
     sector: str
     industry: str
     marketCap: float | str
     dataCollectedDays: int
 
-class stockDB(stockData):
+class stockDB(BaseModel):
     symbol: str
     name: str
     price: float

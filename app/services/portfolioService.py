@@ -92,6 +92,21 @@ class PortfolioService:
         # Step 4: Get the maximum drawdown
         max_drawdown = drawdown.min()
         return max_drawdown
+    
+    def getPortfolioBeta(self, portfolio: pd.Series, benchmark: pd.Series) -> float:
+        """
+        Calculate the beta of a portfolio relative to a benchmark.
+
+        Parameters:
+        - portfolio: pd.Series of portfolio returns
+        - benchmark: pd.Series of benchmark returns
+
+        Returns:
+        - Beta value
+        """
+        cov_matrix = np.cov(portfolio, benchmark)
+        beta = cov_matrix[0, 1] / cov_matrix[1, 1]
+        return beta
 
     def getPortfolioSharpeRatio(self, weights, meanReturns, covMatrix, riskFreeRate):
         expectedReturn = self.getPortfolioReturn(weights, meanReturns)
@@ -100,14 +115,17 @@ class PortfolioService:
         sharpeRatio = (expectedReturn - riskFreeRate) / portfolioStdDev
         return sharpeRatio
     
-    def getPortfolioMetrics(self, weights, meanReturn, covMatrix, data, confidentLevel=0.95, riskFreeRate=0.02):
+    def getPortfolioMetrics(self, dataDf, cummulativeDf, confidentLevel=0.95, riskFreeRate=0.02):
+        portfolioReturn = cummulativeDf['portfolioReturn'].iloc[-1]
+        portfoloVolatility = dataDf['portfolioReturn'].std() * np.sqrt(252)
+        portfolioSharpeRatio = (portfolioReturn - riskFreeRate) / portfoloVolatility
         return [
-            { "label": "Return", "value": f"{(self.getPortfolioReturn(weights, meanReturn) * 100):.2f}"},
-            { "label": "Variance", "value": f"{(self.getPortfolioVariance(weights, covMatrix) * 100):.2f}"},
-            { "label": "Sharpe Ratio", "value": f"{self.getPortfolioSharpeRatio(weights, meanReturn, covMatrix, riskFreeRate):.2f}"},
-            { "label": f"Value at Risk ({confidentLevel*100}%)", "value": f"{(self.getHistoricalVaR(data, confidentLevel) * 100):.2f}" },
-            { "label": f"Expected Shortfall ({confidentLevel*100}%)", "value": f"{(self.getHistoricalES(data, confidentLevel) * 100):.2f}" },
-            { "label": "Max Dropdown", "value": f"{(self.getMaxDrawdown(data) * 100):.2f}" }
+            { "label": "Return", "value": f"{(portfolioReturn * 100):.2f}"},
+            { "label": "Volatility", "value": f"{(portfoloVolatility * 100):.2f}"},
+            { "label": "Sharpe Ratio", "value": f"{portfolioSharpeRatio:.2f}"},
+            { "label": f"Value at Risk ({confidentLevel*100}%)", "value": f"{(self.getHistoricalVaR(dataDf['portfolioReturn'], confidentLevel) * 100):.2f}" },
+            { "label": f"Expected Shortfall ({confidentLevel*100}%)", "value": f"{(self.getHistoricalES(dataDf['portfolioReturn'], confidentLevel) * 100):.2f}" },
+            { "label": "Beta", "value": f"{(self.getPortfolioBeta(dataDf['portfolioReturn'], dataDf['marketReturn'])):.2f}" }
         ]
         
     def getPortfolioSectorWeights(self, weights, stocks, stockDataList):

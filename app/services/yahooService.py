@@ -3,7 +3,7 @@ import os
 from app.schemas.stockData import stockData, stockDB
 from app.schemas.stockHistoryPrice import stockHistoryPrice
 from app.models.database import db
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List
 import asyncio
 import pandas as pd
@@ -25,11 +25,13 @@ sys.path.append(project_root)
 class YahooService:
     def __init__(self, max_workers: int = 5):
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.stockHistoryPriceCollection = db["stockHistoryPrice"]
+        self.stockDataCollection = db["stockData"]
         self.SPYadjclose = None
         
     def prepareNasdaq(self) -> None:
-        nasdaqFile = "./data/nasdaq-stockscreener.csv"
-        nasdaqCompanyFile = "./data/nasdaq-listed-symbols.csv"
+        nasdaqFile = "./data/nasdaq-stockscreener.csv"  # The file downloaded from https://www.nasdaq.com/market-activity/stocks/screener
+        nasdaqCompanyFile = "./data/nasdaq-listed-symbols.csv" # The file downloaded from https://datahub.io/core/nasdaq-listings
         df = pd.read_csv(nasdaqFile)
         dfCompany = pd.read_csv(nasdaqCompanyFile)
 
@@ -71,8 +73,7 @@ class YahooService:
         except Exception as e:
             print(f"Collection already exists or error: {e}")
             
-        self.stockHistoryPriceCollection = db["stockHistoryPrice"]
-        self.stockDataCollection = db["stockData"]
+
     
         
     def checkBox(self) -> None:
@@ -107,28 +108,28 @@ class YahooService:
         def calculateAnnualizedReturn(stockHistoryPrice: pd.DataFrame, days: int) -> float:
             if len(stockHistoryPrice) >= days:
                 recent_prices = stockHistoryPrice.iloc[-days:]
-                daily_returns = recent_prices["adjclose"].pct_change(fill_method=None).dropna()  # Compute daily returns
-                average_daily_return = daily_returns.mean()  # Mean of daily returns
-                annualized_return = average_daily_return * numberOfDaysInYear  # Annualize
-                return annualized_return
+                annualReturn = (recent_prices["adjclose"].iloc[-1] / recent_prices["adjclose"].iloc[0]) ** (252/days) - 1
+                return annualReturn
             return None
         
-        def calculateVolatility(stockHistoryPrice: pd.DataFrame, days: int) -> float:
+        def calculateVolatility(stockHistoryPrice: pd.DataFrame, days: int) -> float | None:
             if len(stockHistoryPrice) >= days:
                 recent_prices = stockHistoryPrice.iloc[-days:]
                 daily_returns = recent_prices["adjclose"].pct_change(fill_method=None).dropna()
-                volatility = daily_returns.std() * (numberOfDaysInYear ** 0.5)  # Annualize
+                volatility = daily_returns.std() * (numberOfDaysInYear ** 0.5)
                 return volatility
             return None
         
-        def calculateMomentum(stockHistoryPrice: pd.DataFrame, days: int) -> float:
+        def calculateMomentum(stockHistoryPrice: pd.DataFrame, days: int) -> float | None:
             if len(stockHistoryPrice) >= days:
                 recent_prices = stockHistoryPrice.iloc[-days:]
                 momentum = (recent_prices["adjclose"].iloc[-1] - recent_prices["adjclose"].iloc[0]) / recent_prices["adjclose"].iloc[0]
                 return momentum
             return None
         
-        def calculateBeta(stockHistoryPrice: pd.DataFrame, days: int) -> float:
+        def calculateBeta(stockHistoryPrice: pd.DataFrame, days: int) -> float | None:
+            if self.SPYadjclose is None:
+                self.SPYadjclose = si.get_data("SPY")["adjclose"]
             if len(stockHistoryPrice) >= days:
                 recent_prices = stockHistoryPrice.iloc[-days:]
                 spy_returns = self.SPYadjclose.pct_change(fill_method=None).dropna()
@@ -137,7 +138,7 @@ class YahooService:
                 return beta
             return None
 
-        def calculateYtdReturn(stockHistoryPrice: pd.DataFrame) -> float:
+        def calculateYtdReturn(stockHistoryPrice: pd.DataFrame) -> float | None:
             current_year = datetime.now().year
             start_of_year = datetime(current_year, 1, 1)
             ytd_prices = stockHistoryPrice[stockHistoryPrice.index >= start_of_year]
@@ -161,11 +162,19 @@ class YahooService:
         fiveYrsVolatility = calculateVolatility(stockHistoryPrice, numberOfDaysInYear * 5)
         threeYrsVolatility = calculateVolatility(stockHistoryPrice, numberOfDaysInYear * 3)
         oneYrVolatility = calculateVolatility(stockHistoryPrice, numberOfDaysInYear)
-        threeMthsMomentum = calculateMomentum(stockHistoryPrice, 63)
+        Momentum = calculateMomentum(stockHistoryPrice, 21 * 6)
+        
         beta = calculateBeta(stockHistoryPrice, days)
-        Return = calculateAnnualizedReturn(stockHistoryPrice, days)
-        Volatility = calculateVolatility(stockHistoryPrice, days)
-
+        if days == 5 * numberOfDaysInYear:
+            Return = annual5YrsReturn
+            Volatility = fiveYrsVolatility
+        elif days == 3 * numberOfDaysInYear:
+            Return = annual3YrsReturn
+            Volatility = threeYrsVolatility
+        else:
+            Return = annual1YrReturn
+            Volatility = oneYrVolatility
+        
         return {
             "symbol": stockData["Symbol"],
             "name": stockData["Name"],
@@ -179,11 +188,11 @@ class YahooService:
             "threeYrsVolatility": threeYrsVolatility,
             "oneYrVolatility": oneYrVolatility,
             "industry": stockData["Industry"],
-            "Return": Return,
-            "Volatility": Volatility,
+            "return": Return,
+            "volatility": Volatility,
             "beta": beta,
             "marketCap": stockData["Market Cap"],
-            "threeMthsMomentum": threeMthsMomentum,
+            "momentum": Momentum,
             "dataCollectedDays": len(stockHistoryPrice),
         }
 
@@ -207,7 +216,7 @@ class YahooService:
             print(f"Error inserting data for {stockData['symbol']}: {e}")
         print(f"Data inserted for {stockData['symbol']}")
         
-    async def getNasdaqIndex(self) -> None:
+    async def getMarketData(self) -> None:
         # SPY
         try:
             print(f"Fetching data for SPY")
@@ -241,7 +250,7 @@ class YahooService:
                 historyPrice = await loop.run_in_executor(
                     self.executor, 
                     si.get_data, 
-                    ticker, 
+                    ticker,
                 )
                 if len(historyPrice) < 252:
                     print(f"Skip {ticker} due to insufficient data")
@@ -268,25 +277,131 @@ class YahooService:
         self.insertData(stockData, historyPrice)
         return
     
+    async def updateMarketData(self, delay: int = 1) -> None:
+        attempt = 0
+        while attempt < 3:
+            try:
+                print(f"Fetching data for SPY")
+                loop = asyncio.get_event_loop()
+                
+                # Fetch the most recent data from the database
+                stockHistoryPriceCollection = db['stockHistoryPrice']
+                
+                # Find the last update date for the stock
+                last_entry = stockHistoryPriceCollection.find({"symbol": "SPY"}).sort("date", -1).limit(1).next()
+                if last_entry is None:
+                    print(f"No data available for SPY.")
+                    return
+                startUpdateDate = last_entry["date"] + timedelta(days=1)
+                
+                # Fetch new data from Yahoo Finance API
+                historyPrice = await loop.run_in_executor(
+                    self.executor,
+                    si.get_data,
+                    "SPY",
+                    startUpdateDate if startUpdateDate else None
+                )
+                
+                if historyPrice.index[0] < startUpdateDate:
+                    print(f"No new data available for SPY.")
+                    return
+                
+                # Convert and insert new stock history data into the database
+                newData = [
+                    self.convertToStockHistory(dp) for _, dp in historyPrice.iterrows()
+                ]
+                stockHistoryPriceCollection.insert_many(newData)
+                print(f"Data for SPY has been successfully updated.")
+                await asyncio.sleep(delay)
+                break
+            except Exception as e:
+                attempt += 1
+                print(f"Attempt {attempt}: Error fetching data for SPY: {e}")
+                with open("data/error.log", "a") as f:
+                    f.write(f"SPY attempt {attempt}: {e}\n")
+                if attempt >= 3:
+                    print(f"Failed to update SPY after 3 attempts.")
+                    return
+    
+    async def updateStockData(self, ticker: str, delay: int = 1) -> None:
+        attempt = 0
+        while attempt < 3:
+            try:
+                print(f"Fetching data for {ticker}")
+                loop = asyncio.get_event_loop()
+                
+                # Fetch the most recent data from the database
+                stockHistoryPriceCollection = db['stockHistoryPrice']
+                stockDataCollection = db['stockData']
+                
+                # Find the last update date for the stock
+                last_entry = stockHistoryPriceCollection.find({"symbol": ticker}).sort("date", -1).limit(1).next()
+                if last_entry is None:
+                    print(f"No data available for {ticker}.")
+                    return
+                startUpdateDate = last_entry["date"] + timedelta(days=1)
+                
+                # Fetch new data from Yahoo Finance API
+                historyPrice = await loop.run_in_executor(
+                    self.executor,
+                    si.get_data,
+                    ticker,
+                    startUpdateDate if startUpdateDate else None
+                )
+                
+                if historyPrice.index[0] < startUpdateDate:
+                    print(f"No new data available for {ticker}.")
+                    return
+                
+                # Convert and insert new stock history data into the database
+                newData = [
+                    self.convertToStockHistory(dp) for _, dp in historyPrice.iterrows()
+                ]
+                stockHistoryPriceCollection.insert_many(newData)
+                
+                # Retrieve full history for updates
+                historyPrice = pd.DataFrame(
+                    stockHistoryPriceCollection.find({"symbol": ticker}).sort("date", 1)
+                )
+                historyPrice.set_index("date", inplace=True)
+                
+                # Update stock data with the latest history
+                stockData = self.readNasdaq()
+                stockData = stockData[stockData["Symbol"] == ticker].iloc[0]
+                stockData = self.convertToStockData(stockData, historyPrice)
+                
+                stockDataCollection.update_one({"symbol": ticker}, {"$set": stockData}, upsert=True)
+                
+                print(f"Data for {ticker} has been successfully updated.")
+                await asyncio.sleep(delay)
+                break
+            except Exception as e:
+                attempt += 1
+                print(f"Attempt {attempt}: Error fetching data for {ticker}: {e}")
+                with open("data/error.log", "a") as f:
+                    f.write(f"{ticker} attempt {attempt}: {e}\n")
+                if attempt >= 3:
+                    print(f"Failed to update {ticker} after 3 attempts.")
+                    return
+    
     def addMinMax(self):
-        standardizedField = ["ReturnZscore", "VolatilityLog", "marketCapLog", "betaZscore", "threeMthsMomentumZscore"]
-        NormalizeField = ["returnMinMax", "volatileMinMax", "marketCapMinMax", "betaMinMax","threeMthsMomentumMinMax"]
-        
+        standardizedField = ["returnZscore", "volatilityLog", "marketCapLog", "betaZscore", "momentumZscore"]
+        NormalizeField = ["returnMinMax", "volatileMinMax", "marketCapMinMax", "betaMinMax","momentumMinMax"]
+
         stocks = pd.DataFrame(self.stockDataCollection.find({}))
         stocks.set_index("_id", inplace=True)
         
         Zscaler = StandardScaler()
         stocks["marketCapLog"] = np.log1p(stocks["marketCap"])
-        stocks["VolatilityLog"] = np.log1p(stocks["Volatility"])
-        stocks["ReturnZscore"] = Zscaler.fit_transform(stocks[["Return"]])
+        stocks["volatilityLog"] = np.log1p(stocks["volatility"]) * -1
+        stocks["returnZscore"] = Zscaler.fit_transform(stocks[["return"]])
         stocks["betaZscore"] = Zscaler.fit_transform(stocks[["beta"]])
-        stocks["threeMthsMomentumZscore"] = Zscaler.fit_transform(stocks[["threeMthsMomentum"]])
+        stocks["momentumZscore"] = Zscaler.fit_transform(stocks[["momentum"]])
         
-        minMaxScaler = MinMaxScaler(feature_range=[-1, 1])
+        minMaxScaler = MinMaxScaler(feature_range=(-1, 1))
         stocks[NormalizeField] = minMaxScaler.fit_transform(stocks[standardizedField]) 
         
         stocks = stocks.drop(columns=standardizedField)
-        
         stocks = stocks.where(pd.notna(stocks), None)
         
         records = stocks.to_dict(orient="records")
@@ -295,14 +410,15 @@ class YahooService:
                 {"symbol": record["symbol"]},  # Filter by the unique key 'symbol'
                 {"$set": record},              # Update the document with new data
                 upsert=True                    # Insert if no matching document exists
-            )
+            )    
         
     async def initDatabase(
         self, 
         batchSize: int = 20, 
         delayBetweenBatches: int = 5, 
         delayBetweenRequests: int = 1, 
-        isTest: bool = False):
+        isTest: bool = False
+        ):
         
         self.checkBox()
         nasdaq = self.readNasdaq()
@@ -313,7 +429,7 @@ class YahooService:
             tickers = tickers[:100]
         self.setUpDatabase()
         
-        await self.getNasdaqIndex()
+        await self.getMarketData()
                 
         tasks = []
         results = []
@@ -325,7 +441,8 @@ class YahooService:
             for i, ticker in enumerate(tickers):  # Adjust the range as needed
                 task = asyncio.create_task(getStockDataAsync(ticker, delay=delayBetweenRequests))
                 tasks.append(task)
-                if len(tasks) == batchSize:
+                
+                if len(tasks) >= batchSize:
                     # Execute batch and wait for results
                     batchResults = await asyncio.gather(*tasks)
                     results.extend(batchResults)
@@ -340,4 +457,40 @@ class YahooService:
         await processTickers()
         
         self.addMinMax()
+        
+    async def updateDatabase(
+        self, 
+        batchSize: int = 20,
+        delayBetweenRequests: int = 1
+        ):
+        stockDataCollection = db["stockData"]
+        
+        await self.updateMarketData(delay=delayBetweenRequests)
+        
+        # Get all symbols from the database
+        stocks = list(stockDataCollection.find({}, {"symbol": 1}))
+        tickers = [stock["symbol"] for stock in stocks]
+        
+        tasks = []
+
+        async def updateStockAsync(ticker: str, delay: int):
+            await self.updateStockData(ticker, delay)
+
+        async def processUpdates():
+            for ticker in tickers:
+                task = asyncio.create_task(updateStockAsync(ticker, delay=delayBetweenRequests))
+                tasks.append(task)
+                # Batch execution control
+                if len(tasks) >= batchSize:  # Adjust batch size as needed
+                    await asyncio.gather(*tasks)
+                    tasks.clear()
+                    print(f"Batch completed. Waiting {delayBetweenRequests} seconds before the next batch.")
+                    await asyncio.sleep(delayBetweenRequests)
+
+            # Handle any remaining tasks
+            if tasks:
+                await asyncio.gather(*tasks)
+        
+        await processUpdates()
+        print("Database update completed.")
     

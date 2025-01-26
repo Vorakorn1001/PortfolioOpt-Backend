@@ -69,18 +69,7 @@ def getYearByName(name):
     return int(name.split('annual')[1].split('YrsReturn')[0])
 
 def checkLongestDays(stockDataList):
-    times = ['annual5YrsReturn', 'annual3YrsReturn', 'annual1YrReturn']
-    for time in times:
-        for stockData in stockDataList:
-            if stockData[time] is None:
-                break
-        else:
-            return getYearByName(time) * 252
-    minDays = float('inf')
-    for stockData in stockDataList:
-        if stockData['dataCollectedDays'] < minDays:
-            minDays = stockData['dataCollectedDays']
-    return minDays
+    return min([stockData['dataCollectedDays'] for stockData in stockDataList])
 
 def convertToGraphFormat(diversification):
     nodes = [{"name": "Portfolio 100%"}]
@@ -140,7 +129,7 @@ def generateRadarWeights(values):
         "volatileMinMax",
         "marketCapMinMax",
         "betaMinMax",
-        "threeMthsMomentumMinMax"
+        "momentumMinMax"
     ]
     return dict(zip(keys, values))
 
@@ -167,7 +156,7 @@ def generatePipeline(
                     {"$multiply": ["$volatileMinMax", weights["volatileMinMax"]]},
                     {"$multiply": ["$marketCapMinMax", weights["marketCapMinMax"]]},
                     {"$multiply": ["$betaMinMax", weights["betaMinMax"]]},
-                    {"$multiply": ["$threeMthsMomentumMinMax", weights["threeMthsMomentumMinMax"]]}
+                    {"$multiply": ["$momentumMinMax", weights["momentumMinMax"]]}
                 ]
             }
         }
