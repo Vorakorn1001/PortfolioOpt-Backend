@@ -11,4 +11,6 @@ MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 
 # Initialize MongoDB client and database
 client = MongoClient(MONGO_URL)
-db = client[MONGO_DB_NAME]
+if MONGO_DB_NAME not in MONGO_URL:
+    db = client[MONGO_DB_NAME]
+db = client.get_database()
