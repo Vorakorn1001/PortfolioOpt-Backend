@@ -55,7 +55,7 @@ def getStockFilter(
         collection = db["stockData"]
         top_stocks = collection.aggregate(pipeline)
         top_stocks_list = reshapeStockData(list(top_stocks))
-        top_stocks_list = processResponse(top_stocks_list)
+        top_stocks_list = processResponse(top_stocks_list, 4)
         return JSONResponse(content=top_stocks_list, status_code=200)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

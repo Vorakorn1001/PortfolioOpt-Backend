@@ -75,6 +75,13 @@ def mergePortfolioData(
                 
     return portfolioDataDB
 
+def convertToDict(data) -> Dict:
+    if hasattr(data, "dict"):
+        return data.dict()
+    if hasattr(data, "model_dump"):
+        return data.model_dump()
+    return data
+
 # Frontend Use for signIn/login
 # Get user's portfolio data
 @router.post("/signIn")
@@ -99,20 +106,20 @@ def signIn(
                 createdAt=datetime.now(), 
                 updatedAt=datetime.now()
                 )
-            userCollection.insert_one(newUser.model_dump())
+            userCollection.insert_one(convertToDict(newUser))
             portfolioDatabase = convertPortfolioDataToPortfolioDB(newUser, portfolio)
-            output = convertPortfolioDBtoPortfolioData(newUser, portfolioDatabase).model_dump()
-            portfolioDatabase = [pf.model_dump() for pf in portfolioDatabase]
+            output = convertToDict(convertPortfolioDBtoPortfolioData(newUser, portfolioDatabase))
+            portfolioDatabase = [convertToDict(pf) for pf in portfolioDatabase]
             portfolioCollection.insert_many(portfolioDatabase)
             return JSONResponse(content=output, status_code=200)
         else:
             # User exist, get the portfolio data and merge with the local portfolio data
             portfolioRecord = list(portfolioCollection.find({"email": user.email})) 
             newPortfolio = mergePortfolioData(user, portfolioRecord, portfolio)    
-            newPortfolioDict = [pf.model_dump() if type(pf) != dict else pf for pf in newPortfolio]            
+            newPortfolioDict = [convertToDict(pf) if type(pf) != dict else pf for pf in newPortfolio]            
             portfolioCollection.delete_many({"email": user.email})
             if len(newPortfolioDict): portfolioCollection.insert_many(newPortfolioDict)
-            output = convertPortfolioDBtoPortfolioData(user, newPortfolio).model_dump()
+            output = convertToDict(convertPortfolioDBtoPortfolioData(user, newPortfolio))
             return JSONResponse(content=output, status_code=200)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
@@ -149,7 +156,7 @@ def Update(
                 createdAt=datetime.now(), 
                 updatedAt=datetime.now()
                 )
-            userCollection.insert_one(newUser.model_dump())
+            userCollection.insert_one(convertToDict(newUser))
             userRecord = userCollection.find_one({"email": user.email})
         
         activePortfolio = user.activePortfolio 
@@ -159,7 +166,7 @@ def Update(
             userRecord["updatedAt"] = datetime.now()
             userCollection.replace_one({"email": user.email}, userRecord)
         
-        stockDataList = [x.model_dump() for x in portfolio]
+        stockDataList = [convertToDict(x) for x in portfolio]
         
         portfolioDatabase = portfolioCollection.find_one({"email": user.email, "name": activePortfolio})
         if portfolioDatabase is None:
@@ -202,7 +209,7 @@ def Update(
                 createdAt=datetime.now(), 
                 updatedAt=datetime.now()
                 )
-            userCollection.insert_one(newUser.model_dump())
+            userCollection.insert_one(convertToDict(newUser))
             userRecord = userCollection.find_one({"email": user.email})
         
         activePortfolio = user.activePortfolio 
@@ -217,13 +224,13 @@ def Update(
             portfolioDatabase = {
                 "email": user.email, 
                 "name": activePortfolio, 
-                "portfolio": portfolio.model_dump(),
+                "portfolio": convertToDict(portfolio),
                 "createdAt": datetime.now(),
                 "updatedAt": datetime.now()
             }
             portfolioCollection.insert_one(portfolioDatabase)
         else:
-            portfolioDatabase["portfolio"] = portfolio.model_dump()
+            portfolioDatabase["portfolio"] = convertToDict(portfolio)
             portfolioDatabase["updatedAt"] = datetime.now()
             portfolioCollection.replace_one({"email": user.email, "name": activePortfolio}, portfolioDatabase)
         

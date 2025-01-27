@@ -23,7 +23,9 @@ def processResponse(data, roundParam=2):
         return [processResponse(element, roundParam) for element in data]
     
     if isinstance(data, stockData):
-        return processResponse(data.model_dump())
+        if hasattr(data, "model_dump"):
+            return processResponse(data.model_dump())
+        return processResponse(data.dict())
 
     # If data is a dictionary, recursively process each key-value pair
     elif isinstance(data, dict):

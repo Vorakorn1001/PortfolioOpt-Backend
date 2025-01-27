@@ -2,7 +2,6 @@ from app.routes import stock, portfolio, optimize, ibkr, user
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from fastapi import FastAPI
-import os
 
 load_dotenv()
 
@@ -10,13 +9,14 @@ app = FastAPI()
 
 origins = [
     "http://192.168.1.52:3000",
-    "http://10.31.68.46:3000",
-    os.getenv("FRONTEND_URL"),
+    "http://localhost:3000",
+    "https://portfolio-opt.vercel.app",
+    "https://portfolio-opt-git-main-vorakorns-projects.vercel.app",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Allows specific origins
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],    # Allow all HTTP methods
     allow_headers=["*"],    # Allow all headers
