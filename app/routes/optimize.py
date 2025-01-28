@@ -117,8 +117,7 @@ def optimize(
         minVolatile = round(np.sqrt(1 / np.sum(np.linalg.pinv(covMatrix))), 3) + PADDING / 100
         maxVolatile = round(max([np.sqrt(covMatrix[x][x]) for x in range(len(covMatrix))]), 3) - PADDING / 100
 
-        # meanVarianceGraph = optimizeService.optimizeRangeRisk(minVolatile, maxVolatile, VOLATILITY_STEP, returns, covMatrix, riskFreeRate)
-        meanVarianceGraph = []
+        meanVarianceGraph = optimizeService.optimizeRangeRisk(minVolatile, maxVolatile, VOLATILITY_STEP, returns, covMatrix, riskFreeRate)
         responseData = {
             "status": "Success",
             "stocks": stocks,

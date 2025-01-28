@@ -79,7 +79,7 @@ def viewExtension(
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@router.post("/")
+@router.post("/init")
 def portfolioPage(
     stocks: List[str],
     investorViews: List[investorViewInput],
