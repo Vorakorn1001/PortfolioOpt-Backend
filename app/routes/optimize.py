@@ -31,7 +31,7 @@ timeframeDict = {
     "5y": 1260
 }
 
-@router.post("/")
+@router.post("/init")
 def optimize(
     stocks: List[str],
     constraint: constraint,
