@@ -10,6 +10,7 @@ class stockData(BaseModel):
     annual3YrsReturn: float | None
     annual1YrReturn: float
     ytdReturn: float
+    returns: float
     volatility: float
     momentum: float
     beta: float

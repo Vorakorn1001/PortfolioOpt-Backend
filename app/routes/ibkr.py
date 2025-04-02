@@ -12,7 +12,7 @@ router = APIRouter()
 def getStockList(df: pd.DataFrame) -> list:
     return [index[0] for index, row in df.iterrows() if index[-1] == "STK"]
 
-@router.post("/")
+@router.post("/upload")
 def uploadFile(
     file: UploadFile = File(...)
 ):

@@ -47,6 +47,8 @@ def processResponse(data, roundParam=2):
                     data[key] = f"{value / 1_000_000_000:.1f}b"
                 elif value >= 1_000_000:
                     data[key] = f"{value / 1_000_000:.1f}m"
+                elif value >= 1_000:
+                    data[key] = f"{value / 1_000:.1f}k"
         return data
     # Return the value as is if it's neither a dict, list, nor numpy array
     return data
@@ -75,8 +77,14 @@ def checkLongestDays(stockDataList):
 
 def convertToGraphFormat(diversification):
     nodes = [{"name": "Portfolio 100%"}]
-    nodes += [{"name": f"{sector} {percentage * 100:.2f}%"} for sector, percentage in diversification.items() if percentage * 100 >= 0.01]
-    links = [{"source": 0, "target": i, "value": percentage * 100} for i, (_, percentage) in enumerate(diversification.items(), start=1) if percentage * 100 >= 0.01]
+    if len(diversification) == 1:
+        sector, percentage = next(iter(diversification.items()))
+        nodes.append({"name": f"{sector} 100.00%"})
+        links = [{"source": 0, "target": 1, "value": 100.00}]
+    else:
+        nodes += [{"name": f"{sector} {round(percentage * 100, 2):.2f}%"} for sector, percentage in diversification.items() if percentage * 100 >= 0.01]
+        links = [{"source": 0, "target": i, "value": round(percentage * 100, 2)} for i, (_, percentage) in enumerate(diversification.items(), start=1) if percentage * 100 >= 0.01]
+    
     result = {
         "nodes": nodes,
         "links": links
@@ -118,6 +126,14 @@ def generateQuery(
                 {"symbol": {"$regex": escapedTerm, "$options": "i"}}
             ]
         })
+        
+    # Volatile < 4
+    # MarketCap > 0
+    # Beta < 3
+    
+    query["$and"].append({"volatility": {"$lt": 4}})
+    query["$and"].append({"marketCap": {"$gt": 0}})
+    query["$and"].append({"beta": {"$lt": 3}})
 
     # Remove $and if it's empty
     if not query["$and"]:
@@ -177,6 +193,9 @@ def reshapeStockData(data: List[Dict]) -> List[stockData]:
         reshaped_data["id"] = str(item["_id"])
         for field in stock_data_fields:
             if field == "id":
+                continue
+            if field == "returns":
+                reshaped_data["returns"] = item.get("return", None)
                 continue
             reshaped_data[field] = item.get(field, getattr(stockData, field, None))
         reshaped_list.append(stockData(**reshaped_data))

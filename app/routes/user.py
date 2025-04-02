@@ -58,9 +58,9 @@ def mergePortfolioData(
             # Update the portfolio by Adding asset/investorView together and removing duplicates
             asset1 = portfolio["portfolio"]["assets"]
             asset2 = portfolioData.portfolios[portfolio["name"]].assets
-            asset2Symbol = [x.symbol for x in asset2]
             
-            asset2 += [stockData(**x) for x in asset1 if x["symbol"] not in asset2Symbol]
+            asset2 += [asset for asset in asset1 if asset not in asset2]
+            
             portfolioDataDB[index].portfolio.assets = asset2
             
             investorView1 = portfolio["portfolio"]["investorViews"]
@@ -87,7 +87,7 @@ def convertToDict(data) -> Dict:
 @router.post("/signIn")
 def signIn(
     user: userData, 
-    portfolio: portfolioData
+    portfolios: portfolioData
     ):
     # Input: userData, portfolioData
     # Output: portfolioData
@@ -107,7 +107,7 @@ def signIn(
                 updatedAt=datetime.now()
                 )
             userCollection.insert_one(convertToDict(newUser))
-            portfolioDatabase = convertPortfolioDataToPortfolioDB(newUser, portfolio)
+            portfolioDatabase = convertPortfolioDataToPortfolioDB(newUser, portfolios)
             output = convertToDict(convertPortfolioDBtoPortfolioData(newUser, portfolioDatabase))
             portfolioDatabase = [convertToDict(pf) for pf in portfolioDatabase]
             portfolioCollection.insert_many(portfolioDatabase)
@@ -115,20 +115,14 @@ def signIn(
         else:
             # User exist, get the portfolio data and merge with the local portfolio data
             portfolioRecord = list(portfolioCollection.find({"email": user.email})) 
-            newPortfolio = mergePortfolioData(user, portfolioRecord, portfolio)    
+            newPortfolio = mergePortfolioData(user, portfolioRecord, portfolios)    
             newPortfolioDict = [convertToDict(pf) if type(pf) != dict else pf for pf in newPortfolio]            
             portfolioCollection.delete_many({"email": user.email})
             if len(newPortfolioDict): portfolioCollection.insert_many(newPortfolioDict)
             output = convertToDict(convertPortfolioDBtoPortfolioData(user, newPortfolio))
             return JSONResponse(content=output, status_code=200)
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-    except ValueError as ve:
-        return JSONResponse(content={"error": str(ve)}, status_code=400)
-    except KeyError as ke:
-        return JSONResponse(content={"error": f"KeyError: {ke}"}, status_code=400)
-    except TypeError as te:
-        return JSONResponse(content={"error": f"TypeError: {te}"}, status_code=400)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Frontend Use when there are update in portfolioData
@@ -136,13 +130,12 @@ def signIn(
 @router.post("/updateAssets")
 def Update(
     user: userData, 
-    portfolio: List[stockData]
+    assets: List[str]
     ):
     # Input: userData, portfolioData
     # Output: status_code
     # Get a local portfolio data, update the user's portfolio data and return the updated portfolio data
-
-    # try:
+    try:
         userCollection = db["usersData"]
         portfolioCollection = db["portfolioData"]
         userRecord = userCollection.find_one({"email": user.email})
@@ -165,16 +158,14 @@ def Update(
             userRecord["activePortfolio"] = activePortfolio
             userRecord["updatedAt"] = datetime.now()
             userCollection.replace_one({"email": user.email}, userRecord)
-        
-        stockDataList = [convertToDict(x) for x in portfolio]
-        
+                
         portfolioDatabase = portfolioCollection.find_one({"email": user.email, "name": activePortfolio})
         if portfolioDatabase is None:
             portfolioDatabase = {
                 "email": user.email, 
                 "name": activePortfolio, 
                 "portfolio": {
-                    "assets": stockDataList,
+                    "assets": assets,
                     "investorViews": []
                     },
                 "createdAt": datetime.now(),
@@ -182,11 +173,12 @@ def Update(
             }
             portfolioCollection.insert_one(portfolioDatabase)
         else:
-            portfolioDatabase["portfolio"]["assets"] = stockDataList
+            portfolioDatabase["portfolio"]["assets"] = assets
             portfolioDatabase["updatedAt"] = datetime.now()
             portfolioCollection.replace_one({"email": user.email, "name": activePortfolio}, portfolioDatabase)
-        
         return JSONResponse(content={"status": "success"}, status_code=200)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))        
     
 @router.post("/updatePortfolio")
 def Update(

@@ -39,44 +39,38 @@ class OptimizeService:
         optimal_weights = ef.clean_weights()
         return list(optimal_weights.values())
     
-    def optimizeRangeRisk(self, min_volatility, max_volatility, step, mean_returns, cov_matrix, riskFreeRate, threshold_pct = 0.1) -> List[dict]:   
+    def optimizeRangeRisk(self, min_volatility, max_volatility, step, mean_returns, cov_matrix, riskFreeRate, threshold_pct=5, maxPortfolios=12) -> List[dict]:
         results = []
         ef = EfficientFrontier(mean_returns, cov_matrix)
         target_volatility = min_volatility
-        
-        while target_volatility <= max_volatility:
+
+        while target_volatility <= max_volatility and len(results) < maxPortfolios:
             ef.efficient_risk(target_volatility)
             optimal_weights = ef.clean_weights()
             optimal_weights = list(optimal_weights.values())
-            
+
             portfolioReturn = self.portfolioService.getPortfolioReturn(optimal_weights, mean_returns)
             portfolioVolatility = self.portfolioService.getPortfolioStdDev(optimal_weights, cov_matrix)
             portfolioSharpeRatio = self.portfolioService.getPortfolioSharpeRatio(optimal_weights, mean_returns, cov_matrix, riskFreeRate)
-            
-            # Check if we have enough results to calculate percentage change
+
             if len(results) >= 2:
-                prev_return = results[-1]["return"]
-                
-                # Calculate percentage change between the last two returns and the current return
-                pct_change = abs((portfolioReturn - prev_return) / prev_return) * 100
-                
-                if pct_change < threshold_pct:  # If the change is less than the threshold, stop
+                prev_vol = results[-1]["volatility"]
+                pct_change = abs((portfolioVolatility - prev_vol) / prev_vol) * 100
+                if pct_change < threshold_pct:
                     break
-            
-            # Append the current result
+
             results.append({
                 "weight": optimal_weights,
                 "return": portfolioReturn,
                 "volatility": portfolioVolatility,
                 "sharpeRatio": portfolioSharpeRatio
             })
-            
-            # Break if the weight is fully allocated to one asset
+
             if 1.0 in optimal_weights:
                 break
-            
+
             target_volatility += step
-            
+
         return results
 
 

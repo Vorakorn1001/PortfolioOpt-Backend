@@ -31,6 +31,11 @@ timeframeDict = {
     "5y": 1260
 }
 
+def calculateAnnualizedReturn(stockHistoryPrice: pd.DataFrame, days: int) -> float:
+    recent_prices = stockHistoryPrice.iloc[-days:]
+    annualReturn = (recent_prices.iloc[-1] / recent_prices.iloc[0]) ** (252/days) - 1
+    return annualReturn
+
 @router.post("/init")
 def optimize(
     stocks: List[str],
@@ -73,7 +78,9 @@ def optimize(
         
         dfReturn = stockDf.pct_change(fill_method=None).dropna()
         marketCap = [stock["marketCap"] for stock in stockDataList]
-        returns = dfReturn.mean() * 252
+        
+        returns = calculateAnnualizedReturn(stockDf, longestDays)
+        
         covMatrix = np.cov(dfReturn, rowvar=False) * 252
         priorReturns = portfolioService.getPriorReturns(marketCap, covMatrix)
         investorViews = convertInvestorView(investorViews, stocks, max([a[i] for i, a in enumerate(covMatrix)]))
@@ -81,7 +88,8 @@ def optimize(
         if investorViews.size > 0:
             posteriorReturns, posteriorCovMatrix = portfolioService.getPosteriorVariables(investorViews.P, investorViews.Q, investorViews.Omega, priorReturns, covMatrix)
             finalReturns = posteriorReturns
-            finalCovMatrix = posteriorCovMatrix
+            finalCovMatrix = covMatrix
+            # finalCovMatrix = posteriorCovMatrix
         else:
             finalReturns = priorReturns
             finalCovMatrix = covMatrix
@@ -110,14 +118,16 @@ def optimize(
 
         portfolioVsMarket = {
             "days": cumulativeReturns.index.strftime("%Y-%m-%d").tolist(),
-            "portfolio": cumulativeReturns["portfolioReturn"].tolist(),
-            "market": cumulativeReturns["marketReturn"].tolist(),
+            "portfolio": (100 * cumulativeReturns["portfolioReturn"]).tolist(),
+            "market": (100 * cumulativeReturns["marketReturn"]).tolist(),
         }
 
         minVolatile = round(np.sqrt(1 / np.sum(np.linalg.pinv(covMatrix))), 3) + PADDING / 100
         maxVolatile = round(max([np.sqrt(covMatrix[x][x]) for x in range(len(covMatrix))]), 3) - PADDING / 100
 
-        meanVarianceGraph = optimizeService.optimizeRangeRisk(minVolatile, maxVolatile, VOLATILITY_STEP, returns, covMatrix, riskFreeRate)
+        meanVarianceGraph = optimizeService.optimizeRangeRisk(minVolatile, maxVolatile, VOLATILITY_STEP, returns, covMatrix, riskFreeRate, maxPortfolios=12)
+        # meanVarianceGraph = samplePortfolios(meanVarianceGraph, 12)
+        
         responseData = {
             "status": "Success",
             "stocks": stocks,
@@ -176,10 +186,6 @@ def change(
         marketData = db['stockHistoryPrice'].find({'symbol': "SPY"}).sort('date', -1).limit(longestDays)
         marketDf = pd.DataFrame(list(marketData))
         marketDf = marketDf[['date', 'symbol', 'close']].pivot(index='date', columns='symbol', values='close')
-
-        dfReturn = stockDf.pct_change(fill_method=None).dropna()
-        returns = dfReturn.mean() * 252
-        covMatrix = np.cov(dfReturn, rowvar=False) * 252
 
         sectorWeights = portfolioService.getPortfolioSectorWeights(weights, stocks, stockDataList)
         sectorWeights = convertToGraphFormat(sectorWeights)
@@ -264,8 +270,6 @@ def performance(
         marketDf = marketDf[['date', 'symbol', 'close']].pivot(index='date', columns='symbol', values='close')
 
         dfReturn = stockDf.pct_change(fill_method=None).dropna()
-        returns = dfReturn.mean() * 252
-        covMatrix = np.cov(dfReturn, rowvar=False) * 252
 
         portfolioSeries = stockDf.dot(weights)
         combinedDf = pd.concat([portfolioSeries, marketDf], axis=1).tail(min(days, longestDays))

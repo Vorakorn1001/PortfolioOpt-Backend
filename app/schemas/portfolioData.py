@@ -9,7 +9,7 @@ class portfolio(BaseModel):
     investorViews: Optional[List[investorView]] = None
     
 class portfolioInput(BaseModel):
-    assets: List[stockData]
+    assets: List[str]
     investorViews: Optional[List[investorViewInput]] = None
 
 class portfolioData(BaseModel):

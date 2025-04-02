@@ -124,7 +124,7 @@ def portfolioPage(
 
         responseData = {
             "status": "Success",
-            "stocks": stocks,
+            "stocksData": stockDataList,
             "correlationMatrix": correlationMatrix,
             "priorReturns": priorReturns,
             "posteriorReturns": posteriorReturns,
@@ -132,7 +132,7 @@ def portfolioPage(
                 "maxReturn": math.floor(max(posteriorReturns) * 100 - PADDING),
                 "minReturn": math.ceil(min(posteriorReturns) * 100 + PADDING),
                 "maxVolatility": math.floor(max([np.sqrt(a[i]) for i, a in enumerate(covMatrix)]) * 100 - PADDING),
-                "minVolatility": math.ceil(np.sqrt(1 / np.sum(np.linalg.pinv(covMatrix))) * 100 - PADDING),
+                "minVolatility": math.ceil(np.sqrt(1 / np.sum(np.linalg.pinv(covMatrix))) * 100 + PADDING),
             }
         }
         

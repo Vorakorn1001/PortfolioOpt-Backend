@@ -36,16 +36,6 @@ class PortfolioService:
         return EstimateShortfall
     
     def getHistoricalVaR(self, data: pd.Series, confidenceLevel: float = 0.95):
-        """
-        Calculate the Value at Risk (VaR) using the historical method.
-
-        Parameters:
-        - data: pd.Series of returns (e.g., daily returns)
-        - confidence_level: float, confidence level for VaR (e.g., 0.95)
-
-        Returns:
-        - VaR value (negative for losses)
-        """
         if not 0 < confidenceLevel < 1:
             raise ValueError("Confidence level must be between 0 and 1.")
 
@@ -53,16 +43,6 @@ class PortfolioService:
         return var
     
     def getHistoricalES(self, data: pd.Series, confidenceLevel):
-        """
-        Calculate the Expected Shortfall (ES) using the historical method.
-
-        Parameters:
-        - data: pd.Series of returns (e.g., daily returns)
-        - confidence_level: float, confidence level for ES (e.g., 0.95)
-
-        Returns:
-        - Expected Shortfall (negative for losses)
-        """
         if not 0 < confidenceLevel < 1:
             raise ValueError("Confidence level must be between 0 and 1.")
 
@@ -71,39 +51,13 @@ class PortfolioService:
         return es
     
     def getMaxDrawdown(self, data: pd.Series) -> float:
-        """
-        Calculate the Maximum Drawdown (MDD) from a series of returns.
-
-        Parameters:
-        - data: pd.Series of returns (e.g., daily returns)
-
-        Returns:
-        - Maximum Drawdown (as a negative percentage)
-        """
-        # Step 1: Calculate cumulative returns
         cumulative_returns = (1 + data).cumprod()
-
-        # Step 2: Calculate the running maximum
         running_max = cumulative_returns.cummax()
-
-        # Step 3: Compute drawdowns
         drawdown = (cumulative_returns - running_max) / running_max
-
-        # Step 4: Get the maximum drawdown
         max_drawdown = drawdown.min()
         return max_drawdown
     
     def getPortfolioBeta(self, portfolio: pd.Series, benchmark: pd.Series) -> float:
-        """
-        Calculate the beta of a portfolio relative to a benchmark.
-
-        Parameters:
-        - portfolio: pd.Series of portfolio returns
-        - benchmark: pd.Series of benchmark returns
-
-        Returns:
-        - Beta value
-        """
         cov_matrix = np.cov(portfolio, benchmark)
         beta = cov_matrix[0, 1] / cov_matrix[1, 1]
         return beta

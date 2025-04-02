@@ -8,7 +8,6 @@ load_dotenv()
 app = FastAPI()
 
 origins = [
-    "http://192.168.1.52:3000",
     "http://localhost:3000",
     "https://portfolio-opt.vercel.app",
     "https://portfolio-opt-git-main-vorakorns-projects.vercel.app",

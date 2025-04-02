@@ -12,3 +12,4 @@ app/services/logs/errorTickers.txt
 
 service-account.json
 mongo-init.js
+*.csv
